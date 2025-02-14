@@ -5,7 +5,6 @@ $inputPath = Join-Path $PSScriptRoot $inputFileName  # construct the input path 
 $localLog = ".\O365_PS_log.txt"  # define a file name for a log
 $higherSkuID = 'e578b273-6db4-4691-bba0-8d691f4da603'  # the SKU ID that will be assigned to only the specified list of users in the input file. See details for org licenses with "Get-MgSubscribedSku | Select -Property Sku*, ConsumedUnits -ExpandProperty PrepaidUnits | Format-List"
 $basicSkuID = '94763226-9b3c-4e75-a931-5c89701abe66'  # the SKU ID that will be assigned to all lother users
-$skuToRemoveID = '78e66a63-337a-4a9a-8959-41c6654dfb56'  # the SKU ID that will be removed (the old A1/A1 plus)
 
 # Clear out log file from previous run
 Clear-Content -Path $localLog
@@ -36,7 +35,7 @@ foreach ($email in $higherLicensedUsers.UserPrincipalName)  # go through each us
             Write-Output $message
             $message | Out-File -FilePath $localLog -Append  # output to log
             Set-MgUserLicense -UserId $email -AddLicenses @{} -RemoveLicenses @($higherSkuID)  # remove the license from the user
-            $successMessage = "INFO: License for $skuToRemoveID has been successfully removed from $email"
+            $successMessage = "INFO: License for $higherSkuID has been successfully removed from $email"
             $successMessage | Out-File -FilePath $localLog -Append 
         }
     }
