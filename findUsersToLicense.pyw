@@ -10,11 +10,11 @@ import oracledb # used to connect to PowerSchool database
 import os # needed to get environement variables
 from datetime import datetime as dt  # just used to log start and end time so we know how long execution took
 
-un = os.environ.get('POWERSCHOOL_READ_USER') # username for read-only database user
-pw = os.environ.get('POWERSCHOOL_DB_PASSWORD') # the password for the database account
-cs = os.environ.get('POWERSCHOOL_PROD_DB') # the IP address, port, and database name to connect to
+DB_UN = os.environ.get('POWERSCHOOL_READ_USER') # username for read-only database user
+DB_PW = os.environ.get('POWERSCHOOL_DB_PASSWORD') # the password for the database account
+DB_CS = os.environ.get('POWERSCHOOL_PROD_DB') # the IP address, port, and database name to connect to
 
-print(f"Username: {un} |Password: {pw} |Server: {cs}") # debug so we can see where oracle is trying to connect to/with
+print(f"DB Username: {DB_UN} |DBPassword: {DB_PW} |DBServer: {DB_CS}") # debug so we can see where oracle is trying to connect to/with
 
 BAD_NAMES = ['use', 'training1','trianing2','trianing3','trianing4','planning','admin','administrator','nurse','user','use ','payroll','human','benefits','test']  # list of names (in all lowercase) that will be ignored
 SCHOOLS_EVERY_USER = [131, 133, 134, 135]  # schools where every user who is not an ignored name will get a license regardless of their job classification
@@ -28,7 +28,7 @@ if __name__ == '__main__': # main file execution
             startTime = startTime.strftime('%H:%M:%S')
             print(f'INFO: Execution started at {startTime}')
             print(f'INFO: Execution started at {startTime}', file=log)
-            with oracledb.connect(user=un, password=pw, dsn=cs) as con: # create the connecton to the database
+            with oracledb.connect(user=DB_UN, password=DB_PW, dsn=DB_CS) as con: # create the connecton to the database
                 print(f'INFO: Connection established to PS database on version: {con.version}')
                 print(f'INFO: Connection established to PS database on version: {con.version}', file=log)
                 with con.cursor() as cur:  # start an entry cursor
