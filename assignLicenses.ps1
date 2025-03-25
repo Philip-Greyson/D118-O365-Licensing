@@ -4,7 +4,8 @@ $inputFileName = "user_list.csv"  # name of the input file
 $inputPath = Join-Path $PSScriptRoot $inputFileName  # construct the input path string by taking the current directory and appending the input file name
 $localLog = ".\O365_PS_log.txt"  # define a file name for a log
 $higherSkuID = 'e578b273-6db4-4691-bba0-8d691f4da603'  # the SKU ID that will be assigned to only the specified list of users in the input file. See details for org licenses with "Get-MgSubscribedSku | Select -Property Sku*, ConsumedUnits -ExpandProperty PrepaidUnits | Format-List"
-$basicSkuID = '94763226-9b3c-4e75-a931-5c89701abe66'  # the SKU ID that will be assigned to all lother users
+$basicSkuID = '94763226-9b3c-4e75-a931-5c89701abe66'  # the SKU ID that will be assigned to all other users
+$oldSkuID = '78e66a63-337a-4a9a-8959-41c6654dfb56'  # the SKU ID of an old license, will be removed from the higher user before license assignment
 
 # Clear out log file from previous run
 Clear-Content -Path $localLog
@@ -27,7 +28,7 @@ foreach ($email in $higherLicensedUsers.UserPrincipalName)  # go through each us
         {
             $message = "DBUG: $email has the higher license of SKU ID $higherSkuID and is still on the list of users who should, no changes needed"
             Write-Output $message
-            Write-Output | Out-File -FilePath $localLog -Append  # output to log
+            $message | Out-File -FilePath $localLog -Append  # output to log
         }
         else 
         {
@@ -57,13 +58,36 @@ foreach ($email in $users)
         {
             $message = "DBUG: $email already has a higher license of SKU ID $higherSkuID, no changes needed"
             Write-Output $message
-            Write-Output | Out-File -FilePath $localLog -Append  # output to log
+            $message | Out-File -FilePath $localLog -Append  # output to log
         }
         else 
         {
             $message = "INFO: $email does not currently have a license for SKU ID $higherSkuID but is on the list of users who should, one will be assigned"
             Write-Output $message
             $message | Out-File -FilePath $localLog -Append
+            # check if they have the old SKU assigned, need to remove it if so since it conflicts.
+            $existingLicense = Get-MgUserLicenseDetail -UserID $email
+            foreach ($skuID in $existingLicense.SkuId)
+            {
+                if (($skuID -eq $oldSkuID) -or ($skuID -eq $basicSkuID))
+                {
+                    $message = "INFO: $email has a license belonging to a conflicting SKU ID $skuID, it will be removed before assignment of new license"
+                    Write-Output $message
+                    $message | Out-File -FilePath $localLog -Append
+                    try 
+                    {
+                        Set-MgUSerLicense -UserID $email -RemoveLicenses @($SkuID) -AddLicenses @{}
+                    }
+                    catch 
+                    {
+                        $message = "ERROR while trying to unassign conflicting license $skuID for $email"
+                        Write-Output $message  # output message to console
+                        $message | Out-File -FilePath $localLog -Append  # output message to log file
+                        Write-Output $_.Exception.Message  # output actual error to console
+                        $_.Exception.Message | Out-File -FilePath $localLog -Append  # output actual error to log file
+                    }
+                }
+            }
             Set-MgUserLicense -UserId $email -AddLicenses @{SkuId= $higherSkuID} -RemoveLicenses @()  # assign the higher license to the user
             $successMessage = "INFO: License for $higherSkuID has been successfully assigned to $email"
             $successMessage | Out-File -FilePath $localLog -Append
