@@ -18,7 +18,7 @@ print(f"DB Username: {DB_UN} |DBPassword: {DB_PW} |DBServer: {DB_CS}") # debug s
 
 BAD_NAMES = ['use', 'training1','trianing2','trianing3','trianing4','planning','admin','administrator','nurse','user','use ','payroll','human','benefits','test']  # list of names (in all lowercase) that will be ignored
 SCHOOLS_EVERY_USER = [131, 133, 134, 135]  # schools where every user who is not an ignored name will get a license regardless of their job classification
-CLASSIFICATIONS_FOR_LICENSES = [700, 703, 704, 800, 801, 802, 193, 293, 393, 410, 510, 610, 190, 191, 290, 291, 390, 391, 180, 280, 380, 192, 292, 392, 480, 580, 680, 395, 396, 911, 383, 230, 330, 281, 381]  # list of classification codes that will get licenses (unless they have an ignored name)
+CLASSIFICATIONS_FOR_LICENSES = [700, 703, 704, 800, 801, 802, 193, 293, 393, 410, 510, 610, 190, 191, 290, 291, 390, 391, 180, 280, 380, 192, 292, 392, 480, 580, 680, 395, 396, 911, 383, 230, 330, 281, 381, 840]  # list of classification codes that will get licenses (unless they have an ignored name)
 
 
 if __name__ == '__main__': # main file execution
