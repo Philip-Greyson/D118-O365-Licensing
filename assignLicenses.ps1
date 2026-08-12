@@ -57,7 +57,9 @@ function Invoke-GraphWithRetry {
             if ($attempt -ge $MaxAttempts -or -not $isTransient) { throw }
 
             $delay = [int]($BaseDelaySeconds * [math]::Pow(2, $attempt - 1))
-            Write-Log WARN "Transient failure on $Context (attempt $attempt/$MaxAttempts), retrying in ${delay}s :: $msg"
+            $message = "WARN: Transient failure on $Context (attempt $attempt/$MaxAttempts), retrying in ${delay}s :: $msg"
+            Write-Output $message
+            $message | Out-File -FilePath $localLog -Append  # output to log
             Start-Sleep -Seconds $delay
         }
     }
@@ -100,12 +102,16 @@ $higherOk = Test-SkuUsable -SkuId $higherSkuID -Label 'Higher SKU'
 $basicOk  = Test-SkuUsable -SkuId $basicSkuID  -Label 'Basic SKU'
 
 if (-not $basicOk) {
-    Write-Log ERROR 'Basic SKU is unusable. Aborting.'
+    $message = ' ERROR: Basic SKU is unusable. Aborting.'
+    Write-Output $message
+    $message | Out-File -FilePath $localLog -Append  # output to log
     Disconnect-MgGraph | Out-Null
     exit 1
 }
 if (-not $higherOk) {
-    Write-Log WARN 'Higher SKU is unusable - A3 passes will be SKIPPED. Basic assignment will still run.'
+    $message = 'WARN: Higher SKU is unusable - A3 passes will be SKIPPED. Basic assignment will still run.'
+    Write-Output $message
+    $message | Out-File -FilePath $localLog -Append  # output to log
 }
 
 # First, read all users from the directory only one time, everything else references this read
@@ -131,7 +137,7 @@ $needLocation = $activeMembers | Where-Object { [string]::IsNullOrWhiteSpace($_.
 if ($needLocation.Count -gt 0) {
     foreach ($user in $needLocation) {
     try {
-        Invoke-GraphWithRetry -Context "Update-MgUser $($user.UserPrincipalName)" -Action {Update-MgUser -UserId $u.Id -UsageLocation $usageLocation}
+        Invoke-GraphWithRetry -Context "Update-MgUser $($user.UserPrincipalName)" -Action {Update-MgUser -UserId $user.Id -UsageLocation $usageLocation}
         $message = "INFO: Set UsageLocation to 'US' for $($user.UserPrincipalName)"
         Write-Output $message
         $message | Out-File -FilePath $localLog -Append
@@ -184,7 +190,7 @@ if ($higherOk) {
                 }
             }
             catch {
-                $message = "ERROR while trying to remove higher SKU license for  : $($_.Exception.Message)"
+                $message = "ERROR while trying to remove higher SKU license for $email : $($_.Exception.Message)"
                 Write-Output $message
                 $message | Out-File -FilePath $localLog -Append
             }
@@ -201,7 +207,14 @@ if ($higherOK) {
             $message | Out-File -FilePath $localLog -Append
         }
         else {
-            $toRemove = @($conflictingSkuIDs | Where-Object { $u.AssignedLicenses.SkuId -contains $_ })
+            $user = $activeMembers | Where-Object { $_.UserPrincipalName -eq $email }  # look up the full user object for this email so we can check their current licenses
+            if (-not $user) {
+                $message = "WARN: $email is on the list of users who should have a higher license, but was not found as an active member in the directory, skipping"
+                Write-Output $message
+                $message | Out-File -FilePath $localLog -Append
+                continue
+            }
+            $toRemove = @($conflictingSkuIDs | Where-Object { $user.AssignedLicenses.SkuId -contains $_ })  # any conflicting licenses this user actually holds, removed in the same call as the add
             $message = "INFO: $email does not currently have a license for SKU ID $higherSkuID but is on the list of users who should, one will be assigned and conflicting licenses will be removed if present: $($toRemove -join ', ')"
             Write-Output $message
             $message | Out-File -FilePath $localLog -Append
@@ -213,7 +226,7 @@ if ($higherOK) {
                 }
                 else {
                     Invoke-GraphWithRetry -Context "Assign higher license to $email" -Action {
-                    Set-MgUserLicense -UserId $email `
+                    Set-MgUserLicense -UserId $user.Id `
                                       -AddLicenses @(@{SkuId = $higherSkuID}) `
                                       -RemoveLicenses $toRemove
                 }
@@ -232,15 +245,17 @@ if ($higherOK) {
 }
 
 # Do a strip of any users who still have the old A1 plus license, since it was retired back in 2025 but may still show up on some users.
-$hasA1Plus = $activeMembers | Where-Object {$_.AssignedLicenses.SkuId -contains $oldA1PlusSkuID -and-not $users.Contains($_.UserPrincipalName)}
+$hasA1Plus = $activeMembers | Where-Object {$_.AssignedLicenses.SkuId -contains $oldA1PlusSkuID -and $users -notcontains $_.UserPrincipalName}
 $message = "INFO: Found $($hasA1Plus.Count) users who still have the old A1 Plus license of SKU ID $oldA1PlusSkuID, it will be removed from them"
+Write-Output $message
+$message | Out-File -FilePath $localLog -Append
 foreach ($u in $hasA1Plus) {
     $email = $u.UserPrincipalName
 
      # Would this leave them with no licenses at all?
         $otherLicenses = @($u.AssignedLicenses.SkuId | Where-Object { $_ -ne $oldA1PlusSkuID })
         $needsBasic    = ($otherLicenses.Count -eq 0)
-        $addList = if ($needsBasic) { @(@{SkuId = $basicSkuID}) } else { @() }  # add the basic license if they have no other licenses, otherwise just remove the old A1 Plus license
+        $addList = if ($needsBasic) { @(@{SkuId = $basicSkuID}) } else { @{} }  # add the basic license if they have no other licenses, otherwise just remove the old A1 Plus license
         try {
             if ($DryRun) {
                 $message = "DRY RUN: Would remove old A1 Plus license for $email and add basic license if needed ($needsBasic)"
@@ -269,7 +284,7 @@ foreach ($u in $hasA1Plus) {
 $unlicensed = $activeMembers | Where-Object {$_.AssignedLicenses.Count -eq 0}  # get active users with no assigned licenses
 foreach ($u in $unlicensed) {
     $email = $u.UserPrincipalName
-    if ($users.Contains($email)){
+    if ($users -contains $email){
         $message = "DBUG: $email is unlicensed but is on the list of users who should have a higher license, so they should have already gotten a license in the previous pass"
         Write-Output $message
         $message | Out-File -FilePath $localLog -Append
