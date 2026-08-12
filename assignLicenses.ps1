@@ -13,6 +13,11 @@ $conflictingSkuIDs = @(
     $basicSkuID
 )
 
+# Accounts to never touch, matched on DisplayName
+$excludedDisplayNames = @(
+    'On-Premises Directory Synchronization Service Account'
+)
+
 $usageLocation = 'US'  # the usage location that will be set for any users who don't have one, since licenses cannot be assigned without a location
 
 # Set to true in order to do a dry run, where the script will only log what it would do, but not actually make any changes to the users or licenses
@@ -122,7 +127,9 @@ $activeMembers = $allUsers | Where-Object {
 
 # Set locations for any users who don't have one, since licenses cannot be assigned without a location
 $needLocation = $activeMembers | Where-Object { [string]::IsNullOrWhiteSpace($_.UsageLocation) }
-foreach ($user in $needLocation) {
+
+if ($needLocation.Count -gt 0) {
+    foreach ($user in $needLocation) {
     try {
         Invoke-GraphWithRetry -Context "Update-MgUser $($user.UserPrincipalName)" -Action {Update-MgUser -UserId $u.Id -UsageLocation $usageLocation}
         $message = "INFO: Set UsageLocation to 'US' for $($user.UserPrincipalName)"
@@ -135,11 +142,15 @@ foreach ($user in $needLocation) {
         $message | Out-File -FilePath $localLog -Append
     }
 }
-if ($needLocation.Count -gt 0) {
     $message = "INFO: Set UsageLocation for $($needLocation.Count) users. Sleeping for 120 seconds to allow replication before license assignment."
     Write-Output $message
     $message | Out-File -FilePath $localLog -Append
     Start-Sleep -Seconds 120
+}
+else {
+    $message = "INFO: No users without locations found, no action needed"
+    Write-Output $message
+    $message | Out-File -FilePath $localLog -Append
 }
 
 # First we want to go through the current licensed users for the higher SKU, and remove any that don't have a matching entry in our input file
@@ -173,7 +184,7 @@ if ($higherOk) {
                 }
             }
             catch {
-                $message = "ERROR while trying to remove higher SKU license for $email: $($_.Exception.Message)"
+                $message = "ERROR while trying to remove higher SKU license for  : $($_.Exception.Message)"
                 Write-Output $message
                 $message | Out-File -FilePath $localLog -Append
             }
@@ -191,7 +202,7 @@ if ($higherOK) {
         }
         else {
             $toRemove = @($conflictingSkuIDs | Where-Object { $u.AssignedLicenses.SkuId -contains $_ })
-            $message = "INFO: $email does not currently have a license for SKU ID $higherSkuID but is on the list of users who should, one will be assigned and $toRemove.Count conflicting licenses will be removed if present: $($toRemove -join ', ')"
+            $message = "INFO: $email does not currently have a license for SKU ID $higherSkuID but is on the list of users who should, one will be assigned and conflicting licenses will be removed if present: $($toRemove -join ', ')"
             Write-Output $message
             $message | Out-File -FilePath $localLog -Append
             try {
@@ -212,7 +223,7 @@ if ($higherOK) {
                 }
             }
             catch {
-                $message = "ERROR while trying to assign higher SKU license for $email: $($_.Exception.Message)"
+                $message = "ERROR while trying to assign higher SKU license for $email : $($_.Exception.Message)"
                 Write-Output $message
                 $message | Out-File -FilePath $localLog -Append
             }
@@ -246,6 +257,12 @@ foreach ($u in $hasA1Plus) {
                 Write-Output $successMessage
                 $successMessage | Out-File -FilePath $localLog -Append
             }
+        }
+        catch {
+            $message = "ERROR while trying to remove old A1 Plus license for $email : $($_.Exception.Message)"
+            Write-Output $message
+            $message | Out-File -FilePath $localLog -Append
+        }
 }
 
 # Finally, go through all other unlicensed active users in the domain and try to give them the basic license
@@ -274,6 +291,11 @@ foreach ($u in $unlicensed) {
             Write-Output $successMessage
             $successMessage | Out-File -FilePath $localLog -Append
         }
+    }
+    catch {
+        $message = "ERROR while trying to assign basic SKU license for $email : $($_.Exception.Message)"
+        Write-Output $message
+        $message | Out-File -FilePath $localLog -Append
     }
 }
 
