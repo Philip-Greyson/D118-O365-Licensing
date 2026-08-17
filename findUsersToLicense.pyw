@@ -14,12 +14,14 @@ DB_UN = os.environ.get('POWERSCHOOL_READ_USER') # username for read-only databas
 DB_PW = os.environ.get('POWERSCHOOL_DB_PASSWORD') # the password for the database account
 DB_CS = os.environ.get('POWERSCHOOL_PROD_DB') # the IP address, port, and database name to connect to
 
+EMAIL_SUFFIX = os.environ.get('EMAIL_SUFFIX')
+
 print(f"DB Username: {DB_UN} |DBPassword: {DB_PW} |DBServer: {DB_CS}") # debug so we can see where oracle is trying to connect to/with
 
 BAD_NAMES = ['use', 'training1','trianing2','trianing3','trianing4','planning','admin','administrator','nurse','user','use ','payroll','human','benefits','test']  # list of names (in all lowercase) that will be ignored
 SCHOOLS_EVERY_USER = [131, 133, 134, 135]  # schools where every user who is not an ignored name will get a license regardless of their job classification
+MANUAL_ENTRIES = ['sluetschwager']
 CLASSIFICATIONS_FOR_LICENSES = [700, 703, 704, 800, 801, 802, 193, 293, 393, 410, 510, 610, 190, 191, 290, 291, 390, 391, 180, 280, 380, 192, 292, 392, 480, 580, 680, 395, 396, 911, 383, 230, 330, 281, 381, 840, 721]  # list of classification codes that will get licenses (unless they have an ignored name)
-
 
 if __name__ == '__main__': # main file execution
     with open('O365_python_log.txt', 'w') as log:
@@ -64,6 +66,9 @@ if __name__ == '__main__': # main file execution
                                         print(email, file=output)
                             else:
                                 print(f'DBUG: Found inactive user {email}')
+                for manual in MANUAL_ENTRIES:  # add in the manual entries to the output file
+                    print(f'INFO: Adding manual override user {manual}{EMAIL_SUFFIX} to output')
+                    print(f'{manual}{EMAIL_SUFFIX}', file=output)
             endTime = dt.now()
             endTime = endTime.strftime('%H:%M:%S')
             print(f'INFO: Execution started at {endTime}')
